@@ -6,6 +6,7 @@ import nltk
 import scipy.sparse
 import numpy as np
 import token_count
+import shutil
 
 '''CATEGORIES PLANNED
 Folktales, World War I, Witchcraft
@@ -32,6 +33,25 @@ World War I
 ---------
 '''
 
+def process_text(args, filename):
+    command_line = "python3 token_count.py " + filename
+    if args.stem:
+        command_line += " -s"
+    if args.lower:
+        command_line += " -l"
+    if args.word:
+        command_line += " -w"
+    if args.number:
+        command_line += " -n"
+    new_name = filename.split("/")[-1]
+    new_name = "processed_txt/" + new_name
+    # print(new_name)
+    command_line += " > " + new_name
+    # print(command_line)
+    os.system(command_line)
+    
+    return new_name
+
 
 def main():
     # if len(sys.argv) < 3:
@@ -53,19 +73,28 @@ def main():
     corpus = {}
     # all_files = glob.glob('/Users/Naga/Desktop/Python/Data/*/y.txt')
     file_path = args.foldername + "*.txt"
-    print(file_path)
+    # print(file_path)
     all_files = glob.glob(file_path)
     # print(all_folders)
     # for folder in all_folders:
     #     all_files.append(glob.glob(args.foldername + folder + "/*.txt"))
     
-    print(all_files)
+    # print(all_files)
     for file in all_files:
         # print(file)
         # all_files.append(file)
         corpus[file] = {}
     
-    print(corpus)
+    dir = 'processed_txt'
+    if os.path.exists(dir):
+        shutil.rmtree(dir)
+    os.makedirs(dir)
+    
+    # print(corpus)
+    for doc in corpus:
+        corpus[doc]["location"] = process_text(args, doc)
+    
+    # print(corpus)
     
 if __name__ == "__main__":
     main()

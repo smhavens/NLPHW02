@@ -10,10 +10,10 @@ def read_file(args):
     word_dict = {}
     # print(args)
     if args.stem:
-        nltk.download('punkt')
+        # nltk.download('punkt')
         stemmer = PorterStemmer()
-    if args.word:
-        nltk.download('stopwords')
+    # if args.word:
+        # nltk.download('stopwords')
     with open(args.filename, 'r') as myfile:
         for line in myfile:
             if args.lower:
