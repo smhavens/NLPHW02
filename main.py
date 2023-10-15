@@ -21,8 +21,9 @@ WITCHCRAFT
 Witch-Cult: 41
 Letters: 11
 Superstitions: 11
-Amber: 25
+Amber: 14
 History of Witchcraft in England: 15
+Witchcraft Delusion Connecticut: 11
 Total: 103
 ---------
 World War I
