@@ -4,6 +4,7 @@ import nltk
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
+import json
 
 def read_file(args):
     # print("Reading file")
@@ -28,19 +29,20 @@ def read_file(args):
                 if args.number:
                     word = ''.join([i for i in word if i.isalpha()])
                     # print("4U".isalpha())
-                if args.word:
-                    if word not in stopwords.words('english'):
+                if word != '':
+                    if args.word:
+                        if word not in stopwords.words('english'):
+                            if args.stem:
+                                word_tokenize(word)
+                                stemmer.stem(word)
+                            word_dict.setdefault(word, 0)
+                            word_dict[word] += 1
+                    else:
                         if args.stem:
-                            word_tokenize(word)
-                            stemmer.stem(word)
+                                word_tokenize(word)
+                                stemmer.stem(word)
                         word_dict.setdefault(word, 0)
                         word_dict[word] += 1
-                else:
-                    if args.stem:
-                            word_tokenize(word)
-                            stemmer.stem(word)
-                    word_dict.setdefault(word, 0)
-                    word_dict[word] += 1
                     
                 
             
@@ -67,10 +69,26 @@ def main():
     # if args.filename == '':
     #     exit("Please input text file and at least one preprocessing command.")
     # print(args.filename, args.lower, args.stem, args.word)
-    sorted_dict = sorted(read_file(args).items(), key=lambda x:x[1], reverse=True)
-    print(sorted_dict)
+    # print(read_file(args))
+    items = read_file(args)
+    sorted_dict = sorted(items.items(), key=lambda x:x[1], reverse=True)
+    # print(sorted_dict)
     
+    json_object = json.dumps(items)
     
+    # json_formatted_str = json.dumps(json_object, indent=2)
+    # print(items)
+    # print(sorted_dict)
+    # with open("test.json", 'w') as my_file:
+        # my_file.write(json_formatted_str)
+    # print(json_formatted_str)
+    
+    print(json.dumps(
+        items,
+        sort_keys=True,
+        indent=4,
+        separators=(',', ': ')
+    ))
     
     
     
