@@ -12,6 +12,8 @@ from collections import defaultdict
 import gensim.downloader as api
 import gensim
 from gensim import corpora
+import math
+from gensim.models import LdaModel
 
 '''CATEGORIES PLANNED
 Folktales, World War I, Witchcraft
@@ -57,34 +59,56 @@ def process_text(args, filename):
     
     return new_name
 
-def create_matrix(corpus, vocab:set):
-    category_matrix = np.empty([1,3], dtype = object)
-    category_matrix[0][0] = "word"
-    category_matrix[0][1] = "witch"
-    category_matrix[0][2] = "folk"
-    # category_matrix = np.array([["word", 1, 2], []])
-    word_doc_matrix = np.empty(len(corpus), dtype = object)
-    # word_doc_matrix = np.array(["word", ])
-    print(word_doc_matrix)
-    print(category_matrix)
+def create_matrix(corpus, vocab:set, word_index:dict):
+    category_matrix = np.empty([1,3], dtype = int)
+    category_matrix[0][0] = 0
+    category_matrix[0][1] = 1
+    category_matrix[0][2] = 2
+    word_doc_matrix = np.empty([2, len(corpus) + 1], dtype = int)
+    num_w = 0
+    num_f = 0
     count = 0
+    size_vocab = 0
     for doc in corpus:
-        # np.append(word_doc_matrix, [])
-        # print(word_doc_matrix)
-        word_doc_matrix = np.append(word_doc_matrix[0], doc)
+        count += 1
+        corpus[doc]["id"] = count
+        word_doc_matrix[0][count] = count
         category_index = 1
         if doc.split("/")[1][0] == "w":
             category_index = 1
+            num_w += 1
         elif doc.split("/")[1][0] == "f":
             category_index = 2
+            num_f += 1
         with open(corpus[doc]["location"], 'r') as file:
             data = json.load(file)
             for i in data:
                 if i not in vocab:
                     vocab.add(i)
-                    # category_matrix = np.append(category_matrix, i)
-                    temp = np.empty(3, dtype = object)
-                    temp[0] = i
+                    size_vocab += 1
+                    word_index[i] = size_vocab
+                    if size_vocab == 1:
+                        word_doc_matrix[size_vocab][0] = size_vocab
+                        for j in range(1, len(corpus) + 1):
+                            if j == count:
+                                word_doc_matrix[size_vocab][j] = data[i]
+                            else:
+                                word_doc_matrix[size_vocab][j] = 0
+                    else:
+                        # category_matrix = np.append(category_matrix, i)
+                        temp_doc = np.empty(len(corpus) + 1, dtype = int)
+                        temp_doc[0] = size_vocab
+                        for j in range(1, len(corpus) + 1):
+                            if j == count:
+                                temp_doc[j] = data[i]
+                            else:
+                                temp_doc[j] = 0
+                        # print(temp_doc)
+                        # print(temp_doc)
+                        word_doc_matrix = np.vstack([word_doc_matrix, temp_doc])
+                    temp = np.empty(3, dtype = int)
+                    temp[0] = size_vocab
+                    
                     if category_index == 1:
                         temp[1] = data[i]
                         temp[2] = 0
@@ -93,39 +117,67 @@ def create_matrix(corpus, vocab:set):
                         temp[1] = 0
                         temp[2] = data[i]
                         category_matrix = np.vstack([category_matrix, temp])
-                else:
-                    location = 0
-                    # print(category_matrix[:,0])
-                    if i == "word":
-                        # location = np.char.find(category_matrix[:, 0], i, start = 1)
-                        location = np.where(category_matrix[:,0] == i)
-                    else:
-                        # location = np.char.find(category_matrix[:, 0], i)
-                        location = np.where(category_matrix[:,0] == i)
-                    # print(category_matrix)
-                        location = location[0][0]
-                    # print("location:", location)
-                    # print(category_index)
-                    # print(category_matrix[location])
                     
-                    # if location == 16:
-                    #     print("RAW:", category_matrix[16])
-                    #     print("BASE:", category_matrix[location])
-                    #     print(category_matrix[location][category_index])
-                    #     print(type(category_matrix[location][category_index]))
-                    #     print(type(data[i]))
-                        category_matrix[location][category_index] += data[i]
-                    # if category_index == 1:
-                        
-                    # elif category_index == 2:
-                    #     category_matrix = np.vstack([category_matrix, [i, 0, data[i]]])
+                else:
+                    location = word_index[i]
+                    category_matrix[location][category_index] += data[i]
+                    
+                    try:
+                        word_doc_matrix[location][count] += data[i]
+                    except:
+                        exit("At" + str(location) + str(count) + "is" + str(word_doc_matrix[location][count]))
+    sparse_categories = scipy.sparse.csr_matrix(category_matrix)
+    sparse_word = scipy.sparse.csr_matrix(word_doc_matrix)
+    sparse_word.eliminate_zeros()
+    sparse_categories.eliminate_zeros()
+    word_matrix = np.delete(word_doc_matrix, (0), axis=1)
     
-    print(category_matrix)
-    print(word_doc_matrix)
+    class_prob = bayes(category_matrix, word_doc_matrix, num_w, num_f, word_index)
+    
+    return lda(word_matrix, class_prob, 10)
                 
 
-def bayes(categories, term_matrix):
-    return categories
+def bayes(categories, term_matrix, num_w, num_f, word_index):
+    ''' 
+    log-likelihood-ratio(word, context) = log(P(w|c)) - log(P(w|C_0))
+    '''
+    # Find Probability Matrix
+    # Prob is log((num_w_in_c + 1)/ (num_tokens_in_c + vocab_size))
+    class_prob = np.empty(3, dtype= float)
+    prob_w = num_w / (num_w + num_f)
+    prob_f = num_f / (num_w + num_f)
+    count = 0
+    current_word = 1
+    vocab_size = len(word_index)
+    for category in categories:
+        word_id = category[0]
+        w_in_c1 = category[1]
+        w_in_c2 = category[2]
+        token_in_c1 = np.sum(categories[:, 1])
+        token_in_c2 = np.sum(categories[:, 2])
+        prob_c1 = math.log((w_in_c1 + 1) / (token_in_c1 + vocab_size))
+        prob_c2 = math.log((w_in_c2 + 1) / (token_in_c2 + vocab_size))
+        
+        # find log(P(w|c_0))
+        class_prob = np.vstack([class_prob, [word_id, prob_c1 - prob_c2, prob_c2 - prob_c1]])
+    # print(class_prob)
+    class_prob = np.delete(class_prob, (0), axis=0)   
+    print(class_prob)
+    top_10_f = np.sort(class_prob[:, 2])  
+    top_10_w = np.sort(class_prob[:, 1])
+    
+    final_prob = np.delete(class_prob, (0), axis=1)
+    print(top_10_f)
+    print(top_10_w)        
+    
+    # Calculate log-likelihood-ratio and give top 10 words per class
+    
+    # Need corpus, id2word
+    
+    return class_prob
+
+def lda(term_matrix, idword, topics):
+    return LdaModel(corpus = term_matrix, num_topics = topics)
 
 def main():
     # if len(sys.argv) < 3:
@@ -178,7 +230,8 @@ def main():
     # print(corpus)
     
     vocab = set()
-    create_matrix(corpus, vocab)
+    word_index = {}
+    print(create_matrix(corpus, vocab, word_index))
     
 if __name__ == "__main__":
     main()
