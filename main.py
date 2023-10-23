@@ -126,15 +126,32 @@ def create_matrix(corpus, vocab:set, word_index:dict):
                         word_doc_matrix[location][count] += data[i]
                     except:
                         exit("At" + str(location) + str(count) + "is" + str(word_doc_matrix[location][count]))
+    print("Number of witchcraft docs:", num_w)
+    print("Number of folklore docs:", num_f)
+    print("Avg # of tokens per witchcraft doc:", np.sum(category_matrix[:, 1]) / num_w)
+    print("Avg # of tokens per folklore doc:", np.sum(category_matrix[:, 2]) / num_f)
+    
     sparse_categories = scipy.sparse.csr_matrix(category_matrix)
-    sparse_word = scipy.sparse.csr_matrix(word_doc_matrix)
+    word_matrix = np.delete(word_doc_matrix, (0), axis=1)
+    # sub_term_f = np.array(word_matrix)
+    sub_term_f = word_matrix[:, 0:num_f]
+    # sub_term_w = np.array(word_matrix)
+    sub_term_w = word_matrix[:, num_f:num_f+num_w]
+    # sub_term_f = np.delete(sub_term_f, [])
+    sparse_word = scipy.sparse.csr_matrix(word_matrix)
+    gensim_corpus = gensim.matutils.Sparse2Corpus(sparse_word, documents_columns=False)
     sparse_word.eliminate_zeros()
     sparse_categories.eliminate_zeros()
-    word_matrix = np.delete(word_doc_matrix, (0), axis=1)
+    
     
     class_prob = bayes(category_matrix, word_doc_matrix, num_w, num_f, word_index)
+    # print(word_index)
+    indexer = {}
+    for k,v in word_index.items():
+        indexer[v] = k
+    # dict((v,k) for k,v in word_index)
     
-    return lda(word_matrix, class_prob, 10)
+    return lda(gensim_corpus, indexer, 10, sub_term_f, sub_term_w)
                 
 
 def bayes(categories, term_matrix, num_w, num_f, word_index):
@@ -162,13 +179,34 @@ def bayes(categories, term_matrix, num_w, num_f, word_index):
         class_prob = np.vstack([class_prob, [word_id, prob_c1 - prob_c2, prob_c2 - prob_c1]])
     # print(class_prob)
     class_prob = np.delete(class_prob, (0), axis=0)   
-    print(class_prob)
-    top_10_f = np.sort(class_prob[:, 2])  
-    top_10_w = np.sort(class_prob[:, 1])
+    # print(class_prob)
+    col_f = class_prob[:, 2]
+    col_w = class_prob[:, 1]
+    top_10_f = -np.sort(-col_f)  
+    top_10_w = -np.sort(-col_w)
+    words_f = []
+    word_w = []
+    indexer = {}
+    for k,v in word_index.items():
+        indexer[v] = k
+    for word in top_10_f[:10]:
+        prob_id = class_prob[np.where(class_prob[:, 2] == word)]
+        # print(prob_id)
+        prob_id = prob_id[0]
+        # print(prob_id)
+        # print(prob_id[0])
+        words_f.append(indexer[prob_id[0]])
+    for word in top_10_w[:10]:
+        prob_id = class_prob[np.where(class_prob[:, 1] == word)]
+        # print(prob_id)
+        prob_id = prob_id[0]
+        # print(prob_id)
+        # print(prob_id[0])
+        word_w.append(indexer[prob_id[0]])
     
     final_prob = np.delete(class_prob, (0), axis=1)
-    print(top_10_f)
-    print(top_10_w)        
+    print("Most common witchcraft words:", word_w)
+    print("Most common folklore words:", words_f)        
     
     # Calculate log-likelihood-ratio and give top 10 words per class
     
@@ -176,8 +214,88 @@ def bayes(categories, term_matrix, num_w, num_f, word_index):
     
     return class_prob
 
-def lda(term_matrix, idword, topics):
-    return LdaModel(corpus = term_matrix, num_topics = topics)
+def lda(term_matrix, idword, topics, sub_term_f, sub_term_w):
+    term_f = scipy.sparse.csr_matrix(sub_term_f)
+    term_w = scipy.sparse.csr_matrix(sub_term_w)
+    term_f = gensim.matutils.Sparse2Corpus(term_f, documents_columns=False)
+    term_w = gensim.matutils.Sparse2Corpus(term_w, documents_columns=False)
+    # print(term_f)
+    # print(term_w)
+    
+    model = LdaModel(term_matrix, num_topics=topics, id2word=idword)
+    
+    topics_f = model.get_document_topics(term_f, per_word_topics=False)
+    topics_w = model.get_document_topics(term_w, per_word_topics=False)
+    # model_w = LdaModel(term_w, num_topics=topics, id2word=idword)
+    # model_f = LdaModel(term_f, num_topics=topics, id2word=idword)
+    
+    # print(model_w.print_topics(num_topics = 5, num_words = 5))
+    # print(model_f.print_topics(num_topics = 5, num_words = 5))
+    # .print_topics(num_topics = 5, num_words = 5)
+    # print(model.inference(term_f))
+    # print(model.inference(term_w))
+    # print(topics_f.print_topics(num_topics = 5, num_word = 3))
+    # print(topics_w.print_topics(num_topics = 5, num_word = 3))
+    
+    
+    # new_topics_f = model[term_f]
+    # new_topics_w = model[term_w]
+    
+    # print(new_topics_f)
+    # print(new_topics_w)
+    print("Top 3 topics in folklore:", model.top_topics(term_f, topn=3))
+    print("Top 3 topics in witchcraft:", model.top_topics(term_w, topn=3))
+    # model_f = LdaModel(term_f, num_topics=topics, id2word=idword)
+    # model_w = LdaModel(term_w, num_topics=topics, id2word=idword)
+    
+    
+    
+    # for topic in new_topics_f:
+    #     print(topic)
+        
+    # for topic in new_topics_w:
+    #     print(topic)
+    
+    # gensim.interface..save_corpus("lda_folklore.csv", corpus, id2word=None, metadata=False)
+    
+    '''
+    [(0, '0.001*"immobile" + 0.001*"abbot" + 0.001*"discussions" + 0.000*"yet" + 0.000*"ways"'), 
+    (5, '0.008*"ways" + 0.005*"conversion" + 0.004*"years" + 0.003*"sunday" + 0.002*"hand"'), 
+    (3, '0.002*"son" + 0.001*"abbot" + 0.001*"god" + 0.001*"action" + 0.001*"new"'), 
+    (4, '0.130*"cuffed" + 0.009*"deserter" + 0.006*"discouraged" + 0.006*"discussed" + 0.004*"disperse"'), 
+    (6, '0.018*"beds" + 0.017*"anathema" + 0.016*"carried" + 0.014*"cessation" + 0.013*"beyond"')]
+    '''
+    
+    '''
+    Top 4 topics in folklore: 
+    [([(0.09277924, 'latters'), (0.08714014, 'leave'), (0.07821521, 'languid')], 0.0), 
+    ([(0.34385446, 'master'), (0.13414359, 'marched'), (0.020273622, 'may')], 0.0), 
+    ([(0.06658595, 'morning'), (0.052259546, 'immobile'), (0.047169186, 'laid')], 0.0), 
+    ([(0.05779511, 'gone'), (0.056666892, 'druid'), (0.051265836, 'gospel')], 0.0),
+    
+     
+    ([(0.10379037, 'give'), (0.09178663, 'disperse'), (0.04669322, 'discussions')], 0.0), 
+    ([(0.009826971, 'beds'), (0.0060068895, 'abbot'), (0.0031643626, 'action')], -0.3155921803863891), 
+    ([(0.0015392016, 'action'), (0.0011931945, 'abbot'), (0.00075496687, 'abide')], -0.8205901326376152), 
+    ([(0.091258146, 'abbot'), (0.05108207, 'action'), (0.03943526, 'admitted')], -0.936429046302898), 
+    ([(0.015332338, 'window'), (0.008779066, 'wise'), (0.007741367, 'ways')], -1.0392680060814878), 
+    ([(0.022478137, 'abide'), (0.016562646, 'anathema'), (0.016421227, 'carried')], -16.632451021409654)]
+    
+    Top 4 topics in witchcraft: 
+    [([(0.091258146, 'abbot'), (0.05108207, 'action'), (0.03943526, 'admitted')], 0.0), 
+    ([(0.0015392016, 'action'), (0.0011931945, 'abbot'), (0.00075496687, 'abide')], 0.0), 
+    ([(0.09277924, 'latters'), (0.08714014, 'leave'), (0.07821521, 'languid')], 0.0), 
+    ([(0.34385446, 'master'), (0.13414359, 'marched'), (0.020273622, 'may')], 0.0),
+    
+     
+    ([(0.06658595, 'morning'), (0.052259546, 'immobile'), (0.047169186, 'laid')], 0.0), 
+    ([(0.05779511, 'gone'), (0.056666892, 'druid'), (0.051265836, 'gospel')], 0.0), 
+    ([(0.009826971, 'beds'), (0.0060068895, 'abbot'), (0.0031643626, 'action')], 0.0), 
+    ([(0.022478137, 'abide'), (0.016562646, 'anathema'), (0.016421227, 'carried')], 0.0), 
+    ([(0.015332338, 'window'), (0.008779066, 'wise'), (0.007741367, 'ways')], 0.0), 
+    ([(0.10379037, 'give'), (0.09178663, 'disperse'), (0.04669322, 'discussions')], 0.0)]
+    '''
+    return model
 
 def main():
     # if len(sys.argv) < 3:
